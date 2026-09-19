@@ -384,7 +384,13 @@ def get_threshold_intervals(
     response_model=RewardPreviewOut,
     responses={
         404: {"description": "Revision beyond the current maximum"},
-        422: {"description": "prize_cents is not 1–100 non-negative integers"},
+        422: {
+            "description": (
+                "revision is not a JSON integer or null, or prize_cents is "
+                "not 1–100 non-negative JSON integers (booleans, numeric "
+                "strings and whole-number floats are not coerced)"
+            )
+        },
     },
 )
 def post_rewards_preview(preview: RewardPreviewIn) -> RewardPreviewOut:

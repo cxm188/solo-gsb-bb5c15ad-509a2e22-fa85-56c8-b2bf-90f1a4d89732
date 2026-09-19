@@ -16,6 +16,16 @@ INT64_MAX = 2**63 - 1
 #: values fail validation.
 StrictInt64 = Annotated[int, Field(strict=True, ge=INT64_MIN, le=INT64_MAX)]
 
+#: Strict, unbounded JSON integer input: accepts only JSON integers;
+#: ``true``/``false``, floats (including whole-number ones like ``1.0``) and
+#: numeric strings fail validation. Unlike :data:`StrictInt64` it carries no
+#: range bound — for inputs that never reach SQLite storage and whose range
+#: is resolved by the ledger layer (e.g. reward preview parameters).
+StrictJsonInt = Annotated[int, Field(strict=True)]
+
+#: Non-negative variant of :data:`StrictJsonInt` (prize amounts in cents).
+NonNegativeStrictJsonInt = Annotated[StrictJsonInt, Field(ge=0)]
+
 
 class EventIn(BaseModel):
     """Write model for a points event (immutable once accepted)."""
@@ -348,15 +358,19 @@ class ThresholdIntervalsOut(BaseModel):
 class RewardPreviewIn(BaseModel):
     """Request body for ``POST /rewards/preview`` (read-only dry run)."""
 
-    revision: Optional[int] = Field(
+    revision: Optional[StrictJsonInt] = Field(
         default=None,
-        description="Snapshot revision; defaults to the latest.",
+        description="Snapshot revision; defaults to the latest. Only a JSON "
+        "integer or null is accepted (booleans, floats and numeric strings "
+        "are rejected); range is resolved by the ledger layer.",
     )
-    prize_cents: List[Annotated[int, Field(ge=0)]] = Field(
+    prize_cents: List[NonNegativeStrictJsonInt] = Field(
         min_length=1,
         max_length=100,
         description="Prize per rank in cents, ordered by rank (1st place first); "
-        "ranks 1..len(prize_cents) form the prize zone.",
+        "ranks 1..len(prize_cents) form the prize zone. Each item must be a "
+        "non-negative JSON integer; booleans, floats and numeric strings are "
+        "rejected.",
     )
 
 
