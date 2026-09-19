@@ -16,6 +16,12 @@ INT64_MAX = 2**63 - 1
 #: values fail validation.
 StrictInt64 = Annotated[int, Field(strict=True, ge=INT64_MIN, le=INT64_MAX)]
 
+#: Strict integer input of any size: only JSON integers are accepted;
+#: ``true``/``false``, floats (whole-number or not) and numeric strings
+#: fail validation. Used where no SQLite INSERT bounds the value, so
+#: out-of-range magnitudes keep their domain-level answer (e.g. 404).
+StrictInt = Annotated[int, Field(strict=True)]
+
 
 class EventIn(BaseModel):
     """Write model for a points event (immutable once accepted)."""
@@ -348,15 +354,19 @@ class ThresholdIntervalsOut(BaseModel):
 class RewardPreviewIn(BaseModel):
     """Request body for ``POST /rewards/preview`` (read-only dry run)."""
 
-    revision: Optional[int] = Field(
+    revision: Optional[StrictInt] = Field(
         default=None,
-        description="Snapshot revision; defaults to the latest.",
+        description="Snapshot revision; defaults to the latest. Only a JSON "
+        "integer or null is accepted — booleans, numeric strings and floats "
+        "(whole-number or not) fail validation.",
     )
-    prize_cents: List[Annotated[int, Field(ge=0)]] = Field(
+    prize_cents: List[Annotated[StrictInt, Field(ge=0)]] = Field(
         min_length=1,
         max_length=100,
         description="Prize per rank in cents, ordered by rank (1st place first); "
-        "ranks 1..len(prize_cents) form the prize zone.",
+        "ranks 1..len(prize_cents) form the prize zone. Every item must be a "
+        "non-negative JSON integer — booleans, numeric strings and floats "
+        "(whole-number or not) fail validation.",
     )
 
 

@@ -180,6 +180,80 @@ def test_prize_cents_validation(client):
     assert r.status_code == 422
 
 
+def test_revision_rejects_non_integer_json_types(client):
+    """revision takes a JSON integer or null only — no lax coercion."""
+    _post(client, "e1", "alice", 10)
+    # Booleans, numeric strings and whole-number floats must not be
+    # coerced into a snapshot revision.
+    for bad in (True, False, "1", "0", 1.0, 0.0, 1.5, [1], {"r": 1}):
+        r = client.post("/rewards/preview",
+                        json={"revision": bad, "prize_cents": [100]})
+        assert r.status_code == 422, bad
+        assert [e["loc"] for e in r.json()["detail"]] == [["body", "revision"]], bad
+
+
+def test_prize_cents_rejects_non_integer_json_types(client):
+    """Each prize item takes a non-negative JSON integer — no lax coercion."""
+    _post(client, "e1", "alice", 10)
+    for bad in (True, False, "100", 100.0, 1.5, None, [100], {"p": 1}):
+        r = client.post("/rewards/preview", json={"prize_cents": [bad]})
+        assert r.status_code == 422, bad
+        assert [e["loc"] for e in r.json()["detail"]] == [["body", "prize_cents", 0]], bad
+
+
+def test_prize_cents_error_location_points_at_each_offending_item(client):
+    """Nested errors report the exact array index of every bad item."""
+    r = client.post("/rewards/preview",
+                    json={"prize_cents": [100, "50", 250.0, True, 30]})
+    assert r.status_code == 422
+    assert [e["loc"] for e in r.json()["detail"]] == [
+        ["body", "prize_cents", 1],
+        ["body", "prize_cents", 2],
+        ["body", "prize_cents", 3],
+    ]
+
+
+def test_valid_integer_forms_still_accepted(client):
+    """JSON integers (incl. 0 and arbitrary precision) and null revision."""
+    _post(client, "e1", "alice", 10)
+
+    r = client.post("/rewards/preview",
+                    json={"revision": 1, "prize_cents": [10**30]})
+    assert r.status_code == 200, r.text
+    assert r.json()["winners"][0]["prize_cents"] == 10**30
+
+    # Explicit null revision behaves like an omitted one: latest snapshot.
+    r = client.post("/rewards/preview",
+                    json={"revision": None, "prize_cents": [0, 100]})
+    assert r.status_code == 200, r.text
+    assert r.json()["revision"] == 1
+    assert r.json()["winners"][0]["prize_cents"] == 0
+
+
+def test_rejected_previews_do_not_write_to_the_ledger(client):
+    """A 422 preview leaves events and the current revision untouched."""
+    _post(client, "e1", "alice", 10)
+    before_events = client.get("/events").json()
+    before_revision = client.get("/leaderboard").json()["revision"]
+
+    bad_payloads = [
+        {"revision": True, "prize_cents": [100]},
+        {"revision": "1", "prize_cents": [100]},
+        {"revision": 1.0, "prize_cents": [100]},
+        {"prize_cents": [False]},
+        {"prize_cents": ["100"]},
+        {"prize_cents": [100.0]},
+        {"prize_cents": [100, -1]},
+        {"prize_cents": []},
+    ]
+    for payload in bad_payloads:
+        r = client.post("/rewards/preview", json=payload)
+        assert r.status_code == 422, payload
+
+    assert client.get("/events").json() == before_events
+    assert client.get("/leaderboard").json()["revision"] == before_revision
+
+
 def test_preview_does_not_write_to_the_ledger(client):
     _post(client, "e1", "alice", 10)
     before_events = client.get("/events").json()
